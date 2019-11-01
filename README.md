@@ -1,7 +1,6 @@
 # YOLOv3-complete-pruning
 
-本项目以[ultralytics/yolov3](https://github.com/ultralytics/yolov3)为YOLOv3的Pytorch实现，并在[YOLOv3-model-pruning](https://github.com/Lam1360/YOLOv3-model-pruning)剪枝的基础上，推出了4个YOLO-v3剪枝版本。
-
+本项目以[ultralytics/yolov3](https://github.com/ultralytics/yolov3)为YOLOv3的Pytorch实现，并在[YOLOv3-model-pruning](https://github.com/Lam1360/YOLOv3-model-pruning)剪枝的基础上，推出了4个YOLO-v3剪枝版本。(在此致谢两位)
 
 |剪枝方式|<center>优点</center>|<center>缺点</center> |
 | --- | --- | --- |
@@ -70,9 +69,13 @@ python3 train.py --data data/oxfordhand.data --batch-size 32 --accumulate 1 --we
 2.稀疏化训练
 
 `-sr`开启稀疏化，`--s`指定稀疏因子大小，`--prune`指定稀疏类型。
+
 其中：
+
 `--prune 0`为正常剪枝和规整剪枝的稀疏化
+
 `--prune 1`为极限剪枝的稀疏化
+
 `--prune 2`为Tiny剪枝的稀疏化
 
 ```bash
@@ -138,7 +141,7 @@ python3 detect.py --cfg cfg/prune_0.8_yolov3-hand.cfg --weights weights/yolov3_h
 | 模型 |参数量  | 模型体积 |  压缩率| 耗时 | mAP |
 | --- | --- | --- | --- | --- | --- |
 | Baseline(416) | 8.7M | 33.1MB | 0% | 2.2ms | 0.6378 |
-| Tiny剪枝 | 4.4M | 16.8MB | 0% |  2.0ms| 0.6132 |
+| Tiny剪枝 | 4.4M | 16.8MB | 40.1% |  2.0ms| 0.6132 |
 
 ## 互动
 
@@ -152,6 +155,10 @@ python3 detect.py --cfg cfg/prune_0.8_yolov3-hand.cfg --weights weights/yolov3_h
 
 ### 3.程序报错怎么办？
 
-一定要在评论区留言，我会尽快修正！
+#### YOLOv3报错
+由于采用了[ultralytics/yolov3](https://github.com/ultralytics/yolov3)为YOLOv3的Pytorch实现，因此这类错误可跳转至此链接询问。
 
+#### 剪枝错误
+
+一定要在本评论区留言，我会尽快修正！
 
