@@ -50,6 +50,9 @@
 
 依然采用oxford hand数据集
 
+<img src="https://www.robots.ox.ac.uk/~vgg/data/hands/hand_dataset_files/Picture_1.png" width="500">
+
+
 1.下载[数据集](http://www.robots.ox.ac.uk/~vgg/data/hands/downloads/hand_dataset.tar.gz)，并解压至/data目录下，得到hand_dataset文件夹。
 
 2.执行`python converter.py` ，生成 images、labels 文件夹和 train.txt、valid.txt 文件。
@@ -100,7 +103,7 @@ python3 shortcut_prune.py
 ```bash
 python3 prune_tiny_yolo.py
 ```
-需要注意的是，这里需要在.py文件内，将opt内的cfg和weights文件指向第2步稀疏化后对应的文件。
+需要注意的是，这里需要在.py文件内，将opt内的cfg和weights变量指向第2步稀疏化后生成的cfg文件和weights文件。
 
 ## 推理展示
 
@@ -127,6 +130,9 @@ python3 detect.py --cfg cfg/prune_0.8_yolov3-hand.cfg --weights weights/yolov3_h
 ```
 
 ## 剪枝效果
+
+以下数据除极限剪枝外，均未微调。
+
 ### YOLO-v3剪枝
 
 | 模型 | 参数量 |模型体积  |压缩率  |耗时  |mAP  |
