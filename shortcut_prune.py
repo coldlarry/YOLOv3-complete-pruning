@@ -15,12 +15,13 @@ import os
 class opt():
     model_def = "cfg/yolov3-hand.cfg"
     data_config = "cfg/oxfordhand.data"
-    model = 'weights/backup230.pt'
+    model = 'weights/last.pt'
 
 
 #指定GPU
 #torch.cuda.set_device(2)
 
+percent = 0.5
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = Darknet(opt.model_def).to(device)
@@ -46,21 +47,7 @@ with torch.no_grad():
     origin_model_metric = eval_model(model)
 origin_nparameters = obtain_num_parameters(model)
 
-'''
-module_defs是一个列表，列表的每一项都是一个字典.贮存的只是并不生效的网络结构信息
-例如{'type': 'convolutional', 'batch_normalize': '1', 'filters': '32', 'size': '3', 'stride': '1', 'pad': '1', 'activation': 'leaky'}
 
-module_list是一个列表，列表的每一项都是一个列表，例如：
-Sequential(
-  (conv_0): Conv2d(3, 32, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
-  (batch_norm_0): BatchNorm2d(32, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
-  (leaky_0): LeakyReLU(negative_slope=0.1, inplace)
-)
-此时对列表索引0，结果为：Conv2d(3, 32, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
-         索引1，结果为：BatchNorm2d(32, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
-
-需要注意的是，module_list的数据类型其实是nn.ModuleList()，是可以真正访问的网络结构，通过访问该list，可以获得权重偏置等数据
-'''
 #{3: 1, 7: 5, 10: 7, 14: 12, 17: 14, 20: 17, 23: 20, 26: 23, 29: 26, 32: 29, 35: 32, 39: 37, 42: 39, 45: 42, 48: 45, 51: 48, 54: 51, 57: 54, 60: 57, 64: 62, 67: 64, 70: 67, 73: 70}
 CBL_idx, Conv_idx, prune_idx,shortcut_idx,shortcut_all= parse_module_defs2(model.module_defs)
 
@@ -120,27 +107,21 @@ def prune_and_eval(model, sorted_bn, percent=.0):
 
             mask = obtain_bn_mask(bn_module, thre1)
             #记录剪枝后，每一层卷积层对应的mask
-            # idx_new[idx]=mask.cpu().numpy()
             idx_new[idx]=mask
             remain_num += int(mask.sum())
             bn_module.weight.data.mul_(mask)
-            #bn_module.bias.data.mul_(mask*0.0001)
         else:
-            
             bn_module = model_copy.module_list[idx][1]
-           
 
             mask=idx_new[shortcut_idx[idx]]
             idx_new[idx]=mask
-            
  
             remain_num += int(mask.sum())
             bn_module.weight.data.mul_(mask)
             
-        #print(int(mask.sum()))
 
     with torch.no_grad():
-        mAP = eval_model(model_copy)[1][0]
+        mAP = eval_model(model_copy)[1].mean()
 
     print(f'Number of channels has been reduced from {len(sorted_bn)} to {remain_num}')
     print(f'Prune ratio: {1-remain_num/len(sorted_bn):.3f}')
@@ -148,7 +129,7 @@ def prune_and_eval(model, sorted_bn, percent=.0):
 
     return thre1
 
-percent = 0.65
+
 threshold = prune_and_eval(model, sorted_bn, percent)
 
 
@@ -180,12 +161,6 @@ def obtain_filters_mask(model, thre, CBL_idx, prune_idx):
                 remain = int(mask.sum())
                 pruned = pruned + mask.shape[0] - remain
 
-                # if remain == 0:
-                #     print("Channels would be all pruned!")
-                #     raise Exception
-
-                # print(f'layer index: {idx:>3d} \t total channel: {mask.shape[0]:>4d} \t '
-                #     f'remaining channel: {remain:>4d}')
             else:
                 mask=idx_new[shortcut_idx[idx]]
                 idx_new[idx]=mask
@@ -270,7 +245,7 @@ pruned_model = prune_model_keep_size2(model, prune_idx, CBL_idx, CBLidx2mask)
 
 
 with torch.no_grad():
-    mAP = eval_model(pruned_model)[1][0]
+    mAP = eval_model(pruned_model)[1].mean()
 print('after prune_model_keep_size map is {}'.format(mAP))
 
 
@@ -316,7 +291,7 @@ with torch.no_grad():
 # 比较剪枝前后参数数量的变化、指标性能的变化
 metric_table = [
     ["Metric", "Before", "After"],
-    ["mAP", f'{origin_model_metric[1][0]:.6f}', f'{compact_model_metric[1][0]:.6f}'],
+    ["mAP", f'{origin_model_metric[1].mean():.6f}', f'{compact_model_metric[1].mean():.6f}'],
     ["Parameters", f"{origin_nparameters}", f"{compact_nparameters}"],
     ["Inference", f'{pruned_forward_time:.4f}', f'{compact_forward_time:.4f}']
 ]

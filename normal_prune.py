@@ -18,6 +18,7 @@ class opt():
 
 #指定GPU
 #torch.cuda.set_device(2)
+percent = 0.5
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = Darknet(opt.model_def).to(device)
@@ -98,7 +99,7 @@ def prune_and_eval(model, sorted_bn, percent=.0):
         remain_num += int(mask.sum())
         bn_module.weight.data.mul_(mask)
     with torch.no_grad():
-        mAP = eval_model(model_copy)[1][0]
+        mAP = eval_model(model_copy)[1].mean()
 
     print(f'Number of channels has been reduced from {len(sorted_bn)} to {remain_num}')
     print(f'Prune ratio: {1-remain_num/len(sorted_bn):.3f}')
@@ -106,7 +107,7 @@ def prune_and_eval(model, sorted_bn, percent=.0):
 
     return thre
 
-percent = 0.75
+
 threshold = prune_and_eval(model, sorted_bn, percent)
 
 
@@ -163,7 +164,7 @@ pruned_model = prune_model_keep_size(model, prune_idx, CBL_idx, CBLidx2mask)
 
 
 with torch.no_grad():
-    mAP = eval_model(pruned_model)[1][0]
+    mAP = eval_model(pruned_model)[1].mean()
 print('after prune_model_keep_size map is {}'.format(mAP))
 
 
@@ -207,7 +208,7 @@ with torch.no_grad():
 # 比较剪枝前后参数数量的变化、指标性能的变化
 metric_table = [
     ["Metric", "Before", "After"],
-    ["mAP", f'{origin_model_metric[1][0]:.6f}', f'{compact_model_metric[1][0]:.6f}'],
+    ["mAP", f'{origin_model_metric[1].mean():.6f}', f'{compact_model_metric[1].mean():.6f}'],
     ["Parameters", f"{origin_nparameters}", f"{compact_nparameters}"],
     ["Inference", f'{pruned_forward_time:.4f}', f'{compact_forward_time:.4f}']
 ]

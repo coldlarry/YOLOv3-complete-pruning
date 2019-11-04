@@ -104,6 +104,7 @@ python3 shortcut_prune.py
 python3 prune_tiny_yolo.py
 ```
 需要注意的是，这里需要在.py文件内，将opt内的cfg和weights变量指向第2步稀疏化后生成的cfg文件和weights文件。
+此外，可通过增大代码中percent的值来获得更大的压缩率。（若稀疏化不到位，且percent值过大，程序会报错。）
 
 ## 推理展示
 
