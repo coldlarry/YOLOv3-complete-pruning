@@ -8,6 +8,26 @@ import torch.nn.functional as F
 def get_sr_flag(epoch, sr):
     # return epoch >= 5 and sr
     return sr
+
+def parse_module_defs3(module_defs):
+
+    CBL_idx = []
+    Conv_idx = []
+    for i, module_def in enumerate(module_defs):
+        if module_def['type'] == 'convolutional':
+            if module_def['batch_normalize'] == '1':
+                CBL_idx.append(i)
+            else:
+                Conv_idx.append(i)
+
+    ignore_idx = set()
+
+    ignore_idx.add(18)
+    
+
+    prune_idx = [idx for idx in CBL_idx if idx not in ignore_idx]
+
+    return CBL_idx, Conv_idx, prune_idx
     
 def parse_module_defs2(module_defs):
 

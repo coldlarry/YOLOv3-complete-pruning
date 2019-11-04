@@ -337,17 +337,28 @@ def load_darknet_weights(self, weights, cutoff=-1):
                 bn_rv = torch.from_numpy(weights[ptr:ptr + num_b]).view_as(bn_layer.running_var)
                 bn_layer.running_var.data.copy_(bn_rv)
                 ptr += num_b
+                #自己加的
+                num_w = conv_layer.weight.numel()
+                conv_w = torch.from_numpy(weights[ptr:ptr + num_w]).view_as(conv_layer.weight)
+                conv_layer.weight.data.copy_(conv_w)
+                ptr += num_w
             else:
-                # Load conv. bias
-                num_b = conv_layer.bias.numel()
-                conv_b = torch.from_numpy(weights[ptr:ptr + num_b]).view_as(conv_layer.bias)
-                conv_layer.bias.data.copy_(conv_b)
-                ptr += num_b
-            # Load conv. weights
-            num_w = conv_layer.weight.numel()
-            conv_w = torch.from_numpy(weights[ptr:ptr + num_w]).view_as(conv_layer.weight)
-            conv_layer.weight.data.copy_(conv_w)
-            ptr += num_w
+                if 'yolov3.weights' or 'yolov3-tiny.weights'in file:
+                    num_b=255
+                    ptr += num_b
+                    num_w = int(self.module_defs[i-1]["filters"]) * 255
+                    ptr += num_w
+                else:
+                    # Load conv. bias
+                    num_b = conv_layer.bias.numel()
+                    conv_b = torch.from_numpy(weights[ptr:ptr + num_b]).view_as(conv_layer.bias)
+                    conv_layer.bias.data.copy_(conv_b)
+                    ptr += num_b
+                    # Load conv. weights
+                    num_w = conv_layer.weight.numel()
+                    conv_w = torch.from_numpy(weights[ptr:ptr + num_w]).view_as(conv_layer.weight)
+                    conv_layer.weight.data.copy_(conv_w)
+                    ptr += num_w
 
     return cutoff
 
