@@ -4,6 +4,7 @@ from utils.google_utils import *
 from utils.parse_config import *
 from utils.utils import *
 import copy
+import os
 ONNX_EXPORT = False
 
 
@@ -343,7 +344,7 @@ def load_darknet_weights(self, weights, cutoff=-1):
                 conv_layer.weight.data.copy_(conv_w)
                 ptr += num_w
             else:
-                if 'yolov3.weights' or 'yolov3-tiny.weights'in file:
+                if os.path.basename(file) == 'yolov3.weights' or os.path.basename(file) == 'yolov3-tiny.weights':
                     num_b=255
                     ptr += num_b
                     num_w = int(self.module_defs[i-1]["filters"]) * 255
@@ -359,6 +360,8 @@ def load_darknet_weights(self, weights, cutoff=-1):
                     conv_w = torch.from_numpy(weights[ptr:ptr + num_w]).view_as(conv_layer.weight)
                     conv_layer.weight.data.copy_(conv_w)
                     ptr += num_w
+    # 确保指针到达权重的最后一个位置
+    assert ptr == len(weights)        
 
     return cutoff
 

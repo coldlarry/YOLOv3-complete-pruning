@@ -150,6 +150,14 @@ python3 detect.py --cfg cfg/prune_0.8_yolov3-hand.cfg --weights weights/yolov3_h
 | Baseline(416) | 8.7M | 33.1MB | 0% | 2.2ms | 0.6378 |
 | Tiny剪枝 | 4.4M | 16.8MB | 40.1% |  2.0ms| 0.6132 |
 
+
+## 核心思想
+
+本代码中剪枝方法来源于论文[Learning Efficient Convolutional Networks through Network Slimming](https://arxiv.org/abs/1708.06519)，剪枝无需微调方法来源于[Rethinking the Smaller-Norm-Less-Informative Assumption in Channel Pruning of Convolution Layers](https://arxiv.org/abs/1802.00124?context=cs)。
+
+此外，实现四种剪枝方法时，在作者的基础上做了改进，具体原理与细节会在后续放出。
+
+
 ## 互动
 
 ### 1.如何获得较高的压缩率？
@@ -168,4 +176,15 @@ python3 detect.py --cfg cfg/prune_0.8_yolov3-hand.cfg --weights weights/yolov3_h
 #### 剪枝错误
 
 一定要在本评论区留言，我会尽快修正！
+
+### 4.后续更新
+
+#### shortcut剪枝优化
+
+后续会对shortcut剪枝再升级，加大压缩率并保持高mAP。
+
+#### YOLO-v3量化
+
+对剪枝后的YOLO-v3/Tiny模型量化。
+
 
