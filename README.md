@@ -35,6 +35,12 @@
 |<center>极限剪枝(shortcut)</center>  | <center>√</center> | <center>√</center> |
 |<center>Tiny剪枝</center>|<center>√</center>|<center>√</center>  |
 
+5.最新进展
+
+- 2019年11月6日：极限剪枝已支持无需微调。
+
+- 非常感谢github大佬[tanluren](https://github.com/tanluren)，对该项目指出的众多问题和支持，实在太强了^_^。
+
 ## 环境搭建
 
 1.由于采用[ultralytics/yolov3](https://github.com/ultralytics/yolov3)的YOLO实现，环境搭建见[ultralytics/yolov3](https://github.com/ultralytics/yolov3)。这里重复介绍一下：
