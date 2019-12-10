@@ -35,11 +35,14 @@
 |<center>极限剪枝(shortcut)</center>  | <center>√</center> | <center>√</center> |
 |<center>Tiny剪枝</center>|<center>√</center>|<center>√</center>  |
 
-5.最新进展
+
+## 最新进展
 
 - 2019年11月6日：极限剪枝已支持无需微调。
 
 - 非常感谢github大佬[tanluren](https://github.com/tanluren)，对该项目指出的众多问题和支持，实在太强了^_^。
+
+- 发现重大BUG：有朋友发现，在该项目上训练自己的baseline（无稀疏的训练）时，map总是无法提高！原因是：程序默认打开了稀疏化训练。 解决办法：在train文件的parser.add_argument中，将prune的默认值设置为-1（目前默认值为0，为0则会打开稀疏化）。此外，还需在train文件中的BNOptimizer.updateBN(sr_flag, model.module.module_list, opt.s, prune_idx)前，加上一句if opt.prune!=-1(未主动开启稀疏化时，不稀疏化)。
 
 ## 环境搭建
 
