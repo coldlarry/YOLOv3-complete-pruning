@@ -7,6 +7,13 @@ import copy
 import os
 ONNX_EXPORT = False
 
+from quant_dorefa import QuanConv as Conv_q
+
+
+#权重量化为W_bit位
+W_bit=16
+#激活量化为A_bit位
+A_bit=16
 
 def create_modules(module_defs, img_size, arc):
     # Constructs module list of layer blocks from module configuration in module_defs
@@ -20,7 +27,29 @@ def create_modules(module_defs, img_size, arc):
     for i, mdef in enumerate(module_defs):
         modules = nn.Sequential()
 
-        if mdef['type'] == 'convolutional':
+        if mdef['type'] == 'quantize_convolutional':
+            bn = int(mdef['batch_normalize'])
+            filters = int(mdef['filters'])
+            kernel_size = int(mdef['size'])
+            pad = (kernel_size - 1) // 2 if int(mdef['pad']) else 0
+            modules.add_module('Conv2d', Conv_q(in_channels=output_filters[-1],
+                                                   out_channels=filters,
+                                                   kernel_size=kernel_size,
+                                                   stride=int(mdef['stride']),
+                                                   padding=pad,
+                                                   bias=not bn,
+                                                   nbit_w=W_bit,
+                                                   nbit_a=A_bit))
+
+            
+            if bn:
+                modules.add_module('BatchNorm2d', nn.BatchNorm2d(filters, momentum=0.1))
+            if mdef['activation'] == 'leaky':  # TODO: activation study https://github.com/ultralytics/yolov3/issues/441
+                modules.add_module('activation', nn.LeakyReLU(0.1, inplace=True))
+                # modules.add_module('activation', nn.PReLU(num_parameters=1, init=0.10))
+                # modules.add_module('activation', Swish())
+        
+        elif mdef['type'] == 'convolutional':
             bn = int(mdef['batch_normalize'])
             filters = int(mdef['filters'])
             kernel_size = int(mdef['size'])
@@ -31,12 +60,12 @@ def create_modules(module_defs, img_size, arc):
                                                    stride=int(mdef['stride']),
                                                    padding=pad,
                                                    bias=not bn))
+
+            
             if bn:
                 modules.add_module('BatchNorm2d', nn.BatchNorm2d(filters, momentum=0.1))
             if mdef['activation'] == 'leaky':  # TODO: activation study https://github.com/ultralytics/yolov3/issues/441
                 modules.add_module('activation', nn.LeakyReLU(0.1, inplace=True))
-                # modules.add_module('activation', nn.PReLU(num_parameters=1, init=0.10))
-                # modules.add_module('activation', Swish())
 
         elif mdef['type'] == 'maxpool':
             kernel_size = int(mdef['size'])
@@ -228,7 +257,7 @@ class Darknet(nn.Module):
 
         for i, (mdef, module) in enumerate(zip(self.module_defs, self.module_list)):
             mtype = mdef['type']
-            if mtype in ['convolutional', 'upsample', 'maxpool']:
+            if mtype in ['convolutional', 'quantize_convolutional','upsample', 'maxpool']:
                 x = module(x)
             elif mtype == 'route':
                 layers = [int(x) for x in mdef['layers'].split(',')]
@@ -316,7 +345,7 @@ def load_darknet_weights(self, weights, cutoff=-1):
 
     ptr = 0
     for i, (mdef, module) in enumerate(zip(self.module_defs[:cutoff], self.module_list[:cutoff])):
-        if mdef['type'] == 'convolutional':
+        if mdef['type'] == 'convolutional' or mdef['type'] == 'quantize_convolutional':
             conv_layer = module[0]
             if mdef['batch_normalize']=='1':
                 # Load BN bias, weights, running mean and running variance
@@ -351,6 +380,7 @@ def load_darknet_weights(self, weights, cutoff=-1):
                     ptr += num_w
                 else:
                     # Load conv. bias
+                    
                     num_b = conv_layer.bias.numel()
                     conv_b = torch.from_numpy(weights[ptr:ptr + num_b]).view_as(conv_layer.bias)
                     conv_layer.bias.data.copy_(conv_b)
@@ -365,6 +395,125 @@ def load_darknet_weights(self, weights, cutoff=-1):
 
     return cutoff
 
+def load_darknet_weights2(self, weights, cutoff=-1):
+    # Parses and loads the weights stored in 'weights'
+
+    # Establish cutoffs (load layers between 0 and cutoff. if cutoff = -1 all are loaded)
+    file = Path(weights).name
+    if file == 'darknet53.conv.74':
+        cutoff = 75
+    elif file == 'yolov3-tiny.conv.15':
+        cutoff = 15
+
+    # Read weights file
+    with open(weights, 'rb') as f:
+        # Read Header https://github.com/AlexeyAB/darknet/issues/2914#issuecomment-496675346
+        self.version = np.fromfile(f, dtype=np.int32, count=3)  # (int32) version info: major, minor, revision
+        self.seen = np.fromfile(f, dtype=np.int64, count=1)  # (int64) number of images seen during training
+
+        weights = np.fromfile(f, dtype=np.float32)  # The rest are weights
+
+    ptr = 0
+    for i, (mdef, module) in enumerate(zip(self.module_defs[:cutoff], self.module_list[:cutoff])):
+        if mdef['type'] == 'quantize_convolutional':
+            conv_layer = module[0]
+            if mdef['batch_normalize']=='0' or mdef['batch_normalize']==0:
+                # Load BN bias, weights, running mean and running variance
+                bn_layer = module[1]
+                
+                num_b = conv_layer.beta.numel()
+
+                # beta
+                bn_b = torch.from_numpy(weights[ptr:ptr + num_b]).view_as(conv_layer.beta)
+                conv_layer.beta.data.copy_(bn_b)
+                ptr += num_b
+
+                # gama
+                bn_w = torch.from_numpy(weights[ptr:ptr + num_b]).view_as(conv_layer.gamma)
+                conv_layer.gamma.data.copy_(bn_w)
+                ptr += num_b
+
+                # Running Mean
+                bn_rm = torch.from_numpy(weights[ptr:ptr + num_b]).view_as(conv_layer.running_mean)
+                conv_layer.running_mean.data.copy_(bn_rm)
+                ptr += num_b
+                # Running Var
+                bn_rv = torch.from_numpy(weights[ptr:ptr + num_b]).view_as(conv_layer.running_var)
+                conv_layer.running_var.data.copy_(bn_rv)
+                ptr += num_b
+                #自己加的
+                num_w = conv_layer.weight.numel()
+                conv_w = torch.from_numpy(weights[ptr:ptr + num_w]).view_as(conv_layer.weight)
+                conv_layer.weight.data.copy_(conv_w)
+                ptr += num_w
+            else:
+                if os.path.basename(file) == 'yolov3.weights' or os.path.basename(file) == 'yolov3-tiny.weights':
+                    num_b=255
+                    ptr += num_b
+                    num_w = int(self.module_defs[i-1]["filters"]) * 255
+                    ptr += num_w
+                else:
+                    # Load conv. bias
+                    
+                    num_b = conv_layer.bias.numel()
+                    conv_b = torch.from_numpy(weights[ptr:ptr + num_b]).view_as(conv_layer.bias)
+                    conv_layer.bias.data.copy_(conv_b)
+                    ptr += num_b
+                    # Load conv. weights
+                    num_w = conv_layer.weight.numel()
+                    conv_w = torch.from_numpy(weights[ptr:ptr + num_w]).view_as(conv_layer.weight)
+                    conv_layer.weight.data.copy_(conv_w)
+                    ptr += num_w
+        elif mdef['type'] == 'convolutional':
+            conv_layer = module[0]
+            if mdef['batch_normalize']=='1':
+                # Load BN bias, weights, running mean and running variance
+                bn_layer = module[1]
+                num_b = bn_layer.bias.numel()  # Number of biases
+                # Bias
+                bn_b = torch.from_numpy(weights[ptr:ptr + num_b]).view_as(bn_layer.bias)
+                bn_layer.bias.data.copy_(bn_b)
+                ptr += num_b
+                # Weight
+                bn_w = torch.from_numpy(weights[ptr:ptr + num_b]).view_as(bn_layer.weight)
+                bn_layer.weight.data.copy_(bn_w)
+                ptr += num_b
+                # Running Mean
+                bn_rm = torch.from_numpy(weights[ptr:ptr + num_b]).view_as(bn_layer.running_mean)
+                bn_layer.running_mean.data.copy_(bn_rm)
+                ptr += num_b
+                # Running Var
+                bn_rv = torch.from_numpy(weights[ptr:ptr + num_b]).view_as(bn_layer.running_var)
+                bn_layer.running_var.data.copy_(bn_rv)
+                ptr += num_b
+                #自己加的
+                num_w = conv_layer.weight.numel()
+                conv_w = torch.from_numpy(weights[ptr:ptr + num_w]).view_as(conv_layer.weight)
+                conv_layer.weight.data.copy_(conv_w)
+                ptr += num_w
+            else:
+                if os.path.basename(file) == 'yolov3.weights' or os.path.basename(file) == 'yolov3-tiny.weights':
+                    num_b=255
+                    ptr += num_b
+                    num_w = int(self.module_defs[i-1]["filters"]) * 255
+                    ptr += num_w
+                else:
+                    # Load conv. bias
+                    
+                    num_b = conv_layer.bias.numel()
+                    conv_b = torch.from_numpy(weights[ptr:ptr + num_b]).view_as(conv_layer.bias)
+                    conv_layer.bias.data.copy_(conv_b)
+                    ptr += num_b
+                    # Load conv. weights
+                    num_w = conv_layer.weight.numel()
+                    conv_w = torch.from_numpy(weights[ptr:ptr + num_w]).view_as(conv_layer.weight)
+                    conv_layer.weight.data.copy_(conv_w)
+                    ptr += num_w
+
+    # 确保指针到达权重的最后一个位置
+    assert ptr == len(weights)        
+
+    return cutoff
 
 def save_weights(self, path='model.weights', cutoff=-1):
     # Converts a PyTorch model to Darket format (*.pt to *.weights)
@@ -376,7 +525,7 @@ def save_weights(self, path='model.weights', cutoff=-1):
 
         # Iterate through layers
         for i, (mdef, module) in enumerate(zip(self.module_defs[:cutoff], self.module_list[:cutoff])):
-            if mdef['type'] == 'convolutional':
+            if mdef['type'] == 'convolutional' or mdef['type'] == 'quantize_convolutional':
                 conv_layer = module[0]
                 # If batch norm, load bn first
                 if mdef['batch_normalize']=='1':
@@ -390,6 +539,46 @@ def save_weights(self, path='model.weights', cutoff=-1):
                     conv_layer.bias.data.cpu().numpy().tofile(f)
                 # Load conv weights
                 conv_layer.weight.data.cpu().numpy().tofile(f)
+
+def save_weights2(self, path='model.weights', cutoff=-1):
+    # Converts a PyTorch model to Darket format (*.pt to *.weights)
+    # Note: Does not work if model.fuse() is applied
+    with open(path, 'wb') as f:
+        # Write Header https://github.com/AlexeyAB/darknet/issues/2914#issuecomment-496675346
+        self.version.tofile(f)  # (int32) version info: major, minor, revision
+        self.seen.tofile(f)  # (int64) number of images seen during training
+
+        # Iterate through layers
+        for i, (mdef, module) in enumerate(zip(self.module_defs[:cutoff], self.module_list[:cutoff])):
+            if mdef['type'] == 'quantize_convolutional':
+                conv_layer = module[0]
+                # If batch norm, load bn first
+                if mdef['batch_normalize']=='0' or mdef['batch_normalize']==0:
+                    
+                    conv_layer.beta.data.cpu().numpy().tofile(f)
+                    conv_layer.gamma.data.cpu().numpy().tofile(f)
+                    conv_layer.running_mean.data.cpu().numpy().tofile(f)
+                    conv_layer.running_var.data.cpu().numpy().tofile(f)
+                # Load conv bias
+                else:
+                    conv_layer.bias.data.cpu().numpy().tofile(f)
+                # Load conv weights
+                conv_layer.weight.data.cpu().numpy().tofile(f)
+            elif mdef['type'] == 'convolutional':
+                conv_layer = module[0]
+                # If batch norm, load bn first
+                if mdef['batch_normalize']=='1':
+                    bn_layer = module[1]
+                    bn_layer.bias.data.cpu().numpy().tofile(f)
+                    bn_layer.weight.data.cpu().numpy().tofile(f)
+                    bn_layer.running_mean.data.cpu().numpy().tofile(f)
+                    bn_layer.running_var.data.cpu().numpy().tofile(f)
+                # Load conv bias
+                else:
+                    conv_layer.bias.data.cpu().numpy().tofile(f)
+                # Load conv weights
+                conv_layer.weight.data.cpu().numpy().tofile(f)
+
 
 
 def convert(cfg='cfg/yolov3-spp.cfg', weights='weights/yolov3-spp.weights'):
