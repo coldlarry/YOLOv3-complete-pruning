@@ -2,6 +2,8 @@
 
 本项目以[ultralytics/yolov3](https://github.com/ultralytics/yolov3)为YOLOv3的Pytorch实现，并在[YOLOv3-model-pruning](https://github.com/Lam1360/YOLOv3-model-pruning)剪枝的基础上，推出了4个YOLO-v3剪枝版本。(在此致谢两位)
 
+此外，最近还更新了YOLO的1bit、4bit、8bit、16bit量化。
+
 |剪枝方式|<center>优点</center>|<center>缺点</center> |
 | --- | --- | --- |
 | 正常剪枝 |不对shortcut剪枝，拥有可观且稳定的压缩率，无需微调。  |压缩率达不到极致。  |
@@ -18,7 +20,7 @@
 `YOLOv3`        | 51.8 (51.5) | 55.4 (55.3) | 58.2 (57.9)
 `YOLOv3-tiny`   | 29.0        | 32.9 (33.1) | 35.5
 
-2.提供对YOLOv3及Tiny的多种剪枝版本，以适应不同的需求。
+2.提供对YOLOv3及Tiny的多种剪枝版本、量化版本，以适应不同的需求。
 
 3.剪枝后保存为.weights格式，可在任何框架下继续训练、推理，或以图像视频展示。
 
@@ -26,7 +28,7 @@
 
 4.目前支持情况
 
-|<center>功能</center>|<center>单卡</center>|<center>多卡</center>|
+|<center>剪枝方式</center>|<center>单卡</center>|<center>多卡</center>|   
 | --- | --- | --- |
 |<center>正常训练</center>|<center>√</center>|<center>√</center>|
 |<center>稀疏化</center>|<center>√</center>|<center>√</center>  |
@@ -35,14 +37,17 @@
 |<center>极限剪枝(shortcut)</center>  | <center>√</center> | <center>√</center> |
 |<center>Tiny剪枝</center>|<center>√</center>|<center>√</center>  |
 
+|<center>二值量化</center>|<center>8bit量化</center>|<center>16bit量化</center>|<center>混合量化</center>|<center>任意bit量化</center>|
+| --- | --- | --- | --- | --- |
+|<center>√</center>|<center>√</center>|<center>√</center>|<center>√</center>|<center>√</center>|
+
 
 ## 最新进展
 
+- 2019年12月26日：支持任意bit量化。
 - 2019年11月6日：极限剪枝已支持无需微调。
-
 - 非常感谢github大佬[tanluren](https://github.com/tanluren)，对该项目指出的众多问题和支持，实在太强了^_^。
 
-- 发现重大BUG：有朋友发现，在该项目上训练自己的baseline（无稀疏的训练）时，map总是无法提高！原因是：程序默认打开了稀疏化训练。 解决办法：在train文件的parser.add_argument中，将prune的默认值设置为-1（目前默认值为0，为0则会打开稀疏化）。此外，还需在train文件中的BNOptimizer.updateBN(sr_flag, model.module.module_list, opt.s, prune_idx)前，加上一句if opt.prune!=-1(未主动开启稀疏化时，不稀疏化)。
 
 ## 环境搭建
 
@@ -70,7 +75,7 @@
 
 4.至此，数据部分完成。
 
-## 模型训练
+## 剪枝篇
 
 1.正常训练
 
@@ -114,6 +119,25 @@ python3 prune_tiny_yolo.py
 ```
 需要注意的是，这里需要在.py文件内，将opt内的cfg和weights变量指向第2步稀疏化后生成的cfg文件和weights文件。
 此外，可通过增大代码中percent的值来获得更大的压缩率。（若稀疏化不到位，且percent值过大，程序会报错。）
+
+## 量化篇
+
+1 指定需要量化的层
+
+打开任意一个可用的配置文件，例如yolov3-hand.cfg。将需要量化的层，从原来的convolutional替换为quantize_convolutional。
+
+2 指定量化方式
+
+通过修改models.py中的W_bit和A_bit，指定权重的量化方式，激活的量化方式。（目前默认为16bit量化）
+
+3 量化训练
+
+
+```bash
+python3 train.py --data data/oxfordhand.data --batch-size 32 --accumulate 1 --weights weights/yolov3.weights --cfg cfg/yolov3-quantize-hand.cfg
+```
+
+与正常训练相同，只是cfg要指向修改过的cfg文件。
 
 ## 推理展示
 
@@ -159,12 +183,29 @@ python3 detect.py --cfg cfg/prune_0.8_yolov3-hand.cfg --weights weights/yolov3_h
 | Baseline(416) | 8.7M | 33.1MB | 0% | 2.2ms | 0.6378 |
 | Tiny剪枝 | 4.4M | 16.8MB | 40.1% |  2.0ms| 0.6132 |
 
+## 量化效果（数据更新中）
+
+以下量化数据中，权重激活均被量化。
+
+### YOLO-v3量化
+
+| 模型 |mAP  |
+| --- | --- |
+| Baseline(416)|0.8246  |
+| 第一层float32+中间层8bit+最后一层float32 |0.8174  |
+| 全16bit量化 |0.8132  |
+| 全8bit量化 | 0.8024  |
+
+
 
 ## 核心思想
 
-本代码中剪枝方法来源于论文[Learning Efficient Convolutional Networks through Network Slimming](https://arxiv.org/abs/1708.06519)，剪枝无需微调方法来源于[Rethinking the Smaller-Norm-Less-Informative Assumption in Channel Pruning of Convolution Layers](https://arxiv.org/abs/1802.00124?context=cs)。
+剪枝方法来源于论文[Learning Efficient Convolutional Networks through Network Slimming](https://arxiv.org/abs/1708.06519)，剪枝无需微调方法来源于[Rethinking the Smaller-Norm-Less-Informative Assumption in Channel Pruning of Convolution Layers](https://arxiv.org/abs/1802.00124?context=cs)。
 
-此外，实现四种剪枝方法时，在作者的基础上做了改进，具体原理与细节会在后续放出。
+
+量化方法来源于论文[DoReFa-Net: Training Low Bitwidth Convolutional Neural Networks with Low Bitwidth Gradients](https://arxiv.org/abs/1606.06160)。
+
+此外，具体实现时，在论文作者的基础上做了改进。
 
 
 ## 互动
@@ -182,18 +223,9 @@ python3 detect.py --cfg cfg/prune_0.8_yolov3-hand.cfg --weights weights/yolov3_h
 #### YOLOv3报错
 由于采用了[ultralytics/yolov3](https://github.com/ultralytics/yolov3)为YOLOv3的Pytorch实现，因此这类错误可跳转至此链接询问。
 
-#### 剪枝错误
+#### 剪枝量化错误
 
 一定要在本评论区留言，我会尽快修正！
 
-### 4.后续更新
-
-#### shortcut剪枝优化
-
-后续会对shortcut剪枝再升级，加大压缩率并保持高mAP。
-
-#### YOLO-v3量化
-
-对剪枝后的YOLO-v3/Tiny模型量化。
 
 
